@@ -498,14 +498,9 @@ Namespace UI.Hub
 
                             Dim headersTotal = BuildHeaders(extrasHeaders)
                             Dim baseStyle As ICellStyle = CreateBorderedStyle(wb)
-                            Dim headerStyle As ICellStyle = CreateHeaderStyle(wb, baseStyle)
-                            Dim mismatchStyle As ICellStyle = CreateFillStyle(wb, baseStyle, New Byte() {&HF9, &HD3, &HD7}) ' light red
-                            Dim matchStyle As ICellStyle = CreateFillStyle(wb, baseStyle, New Byte() {&HD6, &HEF, &HD6})   ' light green
-                            Dim nearStyle As ICellStyle = CreateFillStyle(wb, baseStyle, New Byte() {&HFA, &HF3, &HD1})    ' light yellow
-                            Dim errorStyle As ICellStyle = CreateFillStyle(wb, baseStyle, New Byte() {&HFD, &HEA, &HCC})   ' light orange
 
                             Dim totalBase = totalRows.Select(Function(r) StripExtras(r, extrasHeaders)).ToList()
-                            WriteSheet(wb, "Total", headersTotal, totalBase, headerStyle, baseStyle, matchStyle, mismatchStyle, nearStyle, errorStyle, progressChannel, written, totalCount, doAutoFit)
+                            WriteSheet(wb, "Total", headersTotal, totalBase, baseStyle, progressChannel, written, totalCount, doAutoFit)
 
                             wb.Write(fs)
                         End Using
@@ -540,33 +535,50 @@ Namespace UI.Hub
             Return st
         End Function
 
-        Private Shared Function CreateHeaderStyle(wb As XSSFWorkbook, baseStyle As ICellStyle) As ICellStyle
-            Dim st As XSSFCellStyle = CType(wb.CreateCellStyle(), XSSFCellStyle)
-            st.CloneStyleFrom(baseStyle)
-            st.FillPattern = NPOI.SS.UserModel.FillPattern.SolidForeground
-            ' use available ctor for current NPOI version
-            st.SetFillForegroundColor(New XSSFColor(New Byte() {&H2A, &H3B, &H52}))
-
-            Dim f As XSSFFont = CType(wb.CreateFont(), XSSFFont)
-            f.IsBold = True
-            f.Color = IndexedColors.White.Index
-            st.SetFont(f)
-            Return st
-        End Function
-
-        Private Shared Function CreateFillStyle(wb As XSSFWorkbook, baseStyle As ICellStyle, rgb As Byte()) As ICellStyle
-            Dim st As XSSFCellStyle = CType(wb.CreateCellStyle(), XSSFCellStyle)
-            st.CloneStyleFrom(baseStyle)
-            st.FillPattern = NPOI.SS.UserModel.FillPattern.SolidForeground
-            ' same ctor form as header style to keep compatibility with the current NPOI version
-            st.SetFillForegroundColor(New XSSFColor(rgb))
-            Return st
-        End Function
-
         Private Shared Function SafeCellString(row As Dictionary(Of String, Object), key As String) As String
             If row Is Nothing OrElse String.IsNullOrEmpty(key) OrElse Not row.ContainsKey(key) Then Return String.Empty
             Dim v = row(key)
             Return If(v Is Nothing, String.Empty, v.ToString())
+        End Function
+
+        Private Shared Function BuildConnectorStatusResolver(headers As List(Of String)) As ExcelStyleHelper.StatusResolver
+            If headers Is Nothing OrElse headers.Count = 0 Then Return Nothing
+            Dim statusIndex As Integer = headers.FindIndex(Function(h) h IsNot Nothing AndAlso h.Equals("Status", StringComparison.OrdinalIgnoreCase))
+            If statusIndex < 0 Then Return Nothing
+
+            Return Function(row As IRow, rowIndex As Integer) As ExcelStyleHelper.RowStatus
+                       Dim statusText As String = ExcelStyleHelper.GetCellText(row, statusIndex)
+                       Return ResolveConnectorStatus(statusText)
+                   End Function
+        End Function
+
+        Private Shared Function ResolveConnectorStatus(statusText As String) As ExcelStyleHelper.RowStatus
+            If String.IsNullOrWhiteSpace(statusText) Then Return ExcelStyleHelper.RowStatus.Ok
+            Dim s = statusText.Trim()
+
+            If s.Equals("OK", StringComparison.OrdinalIgnoreCase) OrElse
+               s.Equals("Match", StringComparison.OrdinalIgnoreCase) OrElse
+               s.Equals("PASS", StringComparison.OrdinalIgnoreCase) Then
+                Return ExcelStyleHelper.RowStatus.Ok
+            End If
+
+            If s.Equals("WARN", StringComparison.OrdinalIgnoreCase) OrElse
+               s.IndexOf("Check", StringComparison.OrdinalIgnoreCase) >= 0 OrElse
+               s.IndexOf("Tolerance", StringComparison.OrdinalIgnoreCase) >= 0 OrElse
+               s.Equals("연결 필요(Proximity)", StringComparison.OrdinalIgnoreCase) Then
+                Return ExcelStyleHelper.RowStatus.Warn
+            End If
+
+            If s.Equals("FAIL", StringComparison.OrdinalIgnoreCase) OrElse
+               s.Equals("ERROR", StringComparison.OrdinalIgnoreCase) OrElse
+               s.Equals("Mismatch", StringComparison.OrdinalIgnoreCase) OrElse
+               s.Equals("연결 대상 객체 없음", StringComparison.OrdinalIgnoreCase) OrElse
+               s.Equals("Shared Parameter 등록 필요", StringComparison.OrdinalIgnoreCase) OrElse
+               s.IndexOf("Missing", StringComparison.OrdinalIgnoreCase) >= 0 Then
+                Return ExcelStyleHelper.RowStatus.Error
+            End If
+
+            Return ExcelStyleHelper.RowStatus.Ok
         End Function
 
         Private Shared Function BuildBaseHeaders() As List(Of String)
@@ -795,12 +807,7 @@ Namespace UI.Hub
                                       sheetName As String,
                                       headers As List(Of String),
                                       rows As List(Of Dictionary(Of String, Object)),
-                                      headerStyle As ICellStyle,
                                       baseStyle As ICellStyle,
-                                      matchStyle As ICellStyle,
-                                      mismatchStyle As ICellStyle,
-                                      nearStyle As ICellStyle,
-                                      errorStyle As ICellStyle,
                                       Optional progressChannel As String = Nothing,
                                       Optional ByRef written As Integer = 0,
                                       Optional totalRows As Integer = 0,
@@ -811,7 +818,7 @@ Namespace UI.Hub
             For i = 0 To headers.Count - 1
                 Dim c = headerRow.CreateCell(i)
                 c.SetCellValue(headers(i))
-                c.CellStyle = headerStyle
+                If baseStyle IsNot Nothing Then c.CellStyle = baseStyle
             Next
 
             sh.CreateFreezePane(0, 1)
@@ -825,22 +832,6 @@ Namespace UI.Hub
                 Dim r As Integer = 1
                 For Each row In rows
                     Dim sr = sh.CreateRow(r) : r += 1
-
-                    Dim statusVal As String = SafeCellString(row, "Status")
-                    Dim connVal As String = SafeCellString(row, "ConnectionType")
-                    Dim styleToUse As ICellStyle = baseStyle
-
-                    If String.Equals(statusVal, "ERROR", StringComparison.OrdinalIgnoreCase) Then
-                        styleToUse = errorStyle
-                    ElseIf IsMismatchStatus(statusVal) Then
-                        styleToUse = mismatchStyle
-                    ElseIf String.Equals(statusVal, "OK", StringComparison.OrdinalIgnoreCase) Then
-                        styleToUse = matchStyle
-                    ElseIf String.Equals(statusVal, "연결 대상 객체 없음", StringComparison.OrdinalIgnoreCase) OrElse String.Equals(statusVal, "연결 필요(Proximity)", StringComparison.OrdinalIgnoreCase) Then
-                        styleToUse = nearStyle
-                    ElseIf String.Equals(connVal.Trim(), "Near", StringComparison.OrdinalIgnoreCase) OrElse connVal.IndexOf("Proximity", StringComparison.OrdinalIgnoreCase) >= 0 Then
-                        styleToUse = nearStyle
-                    End If
 
                     For c = 0 To headers.Count - 1
                         Dim key = headers(c)
@@ -861,12 +852,16 @@ Namespace UI.Hub
                         End If
 
                         cell.SetCellValue(text)
-                        cell.CellStyle = styleToUse
+                        If baseStyle IsNot Nothing Then cell.CellStyle = baseStyle
                     Next
                     written += 1
                     Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Report(progressChannel, "EXCEL_WRITE", "엑셀 데이터 작성", written, totalRows)
                 Next
             End If
+
+            Dim lastColIndex As Integer = headers.Count - 1
+            ExcelStyleHelper.ApplyHeaderStyle(sh, 0, lastColIndex)
+            ExcelStyleHelper.ApplyRowStyleByStatus(sh, 1, sh.LastRowNum, lastColIndex, BuildConnectorStatusResolver(headers))
 
             If doAutoFit Then
                 ApplyFastColumnWidths(sh, headers, rows)

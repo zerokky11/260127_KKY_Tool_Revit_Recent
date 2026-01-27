@@ -13,7 +13,12 @@ Namespace Infrastructure
     Public Module ExcelCore
 
         ' 저장 대화상자 + 저장
-        Public Function PickAndSaveXlsx(sheetName As String, table As DataTable, Optional defaultFileName As String = Nothing, Optional doAutoFit As Boolean = False, Optional progressChannel As String = Nothing) As String
+        Public Function PickAndSaveXlsx(sheetName As String,
+                                        table As DataTable,
+                                        Optional defaultFileName As String = Nothing,
+                                        Optional doAutoFit As Boolean = False,
+                                        Optional progressChannel As String = Nothing,
+                                        Optional statusResolver As ExcelStyleHelper.StatusResolver = Nothing) As String
             If table Is Nothing Then Return String.Empty
             Dim fileName As String = If(String.IsNullOrWhiteSpace(defaultFileName), $"{sheetName}.xlsx", defaultFileName)
             Using sfd As New SaveFileDialog()
@@ -24,7 +29,7 @@ Namespace Infrastructure
                 sfd.OverwritePrompt = True
                 sfd.RestoreDirectory = True
                 If sfd.ShowDialog() = DialogResult.OK Then
-                    SaveXlsx(sfd.FileName, sheetName, table, doAutoFit, progressChannel)
+                    SaveXlsx(sfd.FileName, sheetName, table, doAutoFit, progressChannel, statusResolver)
                     Return sfd.FileName
                 End If
             End Using
@@ -51,20 +56,18 @@ Namespace Infrastructure
         End Function
 
         ' 일반 테이블 저장
-        Public Sub SaveXlsx(filePath As String, sheetName As String, table As DataTable, Optional doAutoFit As Boolean = False, Optional progressChannel As String = Nothing)
+        Public Sub SaveXlsx(filePath As String,
+                            sheetName As String,
+                            table As DataTable,
+                            Optional doAutoFit As Boolean = False,
+                            Optional progressChannel As String = Nothing,
+                            Optional statusResolver As ExcelStyleHelper.StatusResolver = Nothing)
             If table Is Nothing Then Throw New ArgumentNullException(NameOf(table))
             Dim totalRows As Integer = table.Rows.Count
             Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Reset(progressChannel)
             Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Report(progressChannel, "EXCEL_INIT", "엑셀 워크북 준비", 0, totalRows, Nothing, True)
             UI.Hub.UiBridgeExternalEvent.LogAutoFitDecision(doAutoFit, "ExcelCore.SaveXlsx")
             Dim wb As IWorkbook = New XSSFWorkbook()
-
-            Dim headFont = wb.CreateFont() : headFont.IsBold = True
-            Dim headStyle = wb.CreateCellStyle()
-            headStyle.SetFont(headFont)
-            headStyle.FillPattern = FillPattern.SolidForeground
-            headStyle.FillForegroundColor = IndexedColors.Grey25Percent.Index
-            SetThinBorders(headStyle)
 
             Dim bodyStyle = wb.CreateCellStyle() : SetThinBorders(bodyStyle)
 
@@ -75,7 +78,6 @@ Namespace Infrastructure
             For ci = 0 To table.Columns.Count - 1
                 Dim c = r0.CreateCell(ci)
                 c.SetCellValue(table.Columns(ci).ColumnName)
-                c.CellStyle = headStyle
             Next
 
             If table.Columns.Count > 0 Then
@@ -83,8 +85,6 @@ Namespace Infrastructure
                 Dim range As New CellRangeAddress(0, 0, 0, lastCol)
                 sh.SetAutoFilter(range)
             End If
-            sh.CreateFreezePane(0, 1)
-
             ' 바디
             For ri = 0 To table.Rows.Count - 1
                 Dim rr = sh.CreateRow(ri + 1)
@@ -96,6 +96,10 @@ Namespace Infrastructure
                 Next
                 Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Report(progressChannel, "EXCEL_WRITE", "엑셀 데이터 작성", ri + 1, totalRows)
             Next
+
+            Dim lastColIndex As Integer = table.Columns.Count - 1
+            ExcelStyleHelper.ApplyHeaderStyle(sh, 0, lastColIndex)
+            ExcelStyleHelper.ApplyRowStyleByStatus(sh, 1, sh.LastRowNum, lastColIndex, statusResolver)
 
             If doAutoFit Then
                 AutoSizeAll(sh, table.Columns.Count)
@@ -117,7 +121,10 @@ Namespace Infrastructure
         End Sub
 
         ' 다중 시트 저장
-        Public Sub SaveXlsxMulti(filePath As String, sheets As IList(Of KeyValuePair(Of String, DataTable)), Optional doAutoFit As Boolean = False, Optional progressChannel As String = Nothing)
+        Public Sub SaveXlsxMulti(filePath As String,
+                                 sheets As IList(Of KeyValuePair(Of String, DataTable)),
+                                 Optional doAutoFit As Boolean = False,
+                                 Optional progressChannel As String = Nothing)
             If sheets Is Nothing OrElse sheets.Count = 0 Then Throw New ArgumentNullException(NameOf(sheets))
             Dim totalRows As Integer = 0
             For Each kv In sheets
@@ -130,13 +137,6 @@ Namespace Infrastructure
             UI.Hub.UiBridgeExternalEvent.LogAutoFitDecision(doAutoFit, "ExcelCore.SaveXlsxMulti")
 
             Dim wb As IWorkbook = New XSSFWorkbook()
-            Dim headFont = wb.CreateFont() : headFont.IsBold = True
-            Dim headStyle = wb.CreateCellStyle()
-            headStyle.SetFont(headFont)
-            headStyle.FillPattern = FillPattern.SolidForeground
-            headStyle.FillForegroundColor = IndexedColors.Grey25Percent.Index
-            SetThinBorders(headStyle)
-
             Dim bodyStyle = wb.CreateCellStyle() : SetThinBorders(bodyStyle)
             Dim current As Integer = 0
 
@@ -149,7 +149,6 @@ Namespace Infrastructure
                 For ci = 0 To table.Columns.Count - 1
                     Dim c = r0.CreateCell(ci)
                     c.SetCellValue(table.Columns(ci).ColumnName)
-                    c.CellStyle = headStyle
                 Next
 
                 If table.Columns.Count > 0 Then
@@ -157,8 +156,6 @@ Namespace Infrastructure
                     Dim range As New CellRangeAddress(0, 0, 0, lastCol)
                     sh.SetAutoFilter(range)
                 End If
-                sh.CreateFreezePane(0, 1)
-
                 For ri = 0 To table.Rows.Count - 1
                     Dim rr = sh.CreateRow(ri + 1)
                     For ci = 0 To table.Columns.Count - 1
@@ -170,6 +167,9 @@ Namespace Infrastructure
                     current += 1
                     Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Report(progressChannel, "EXCEL_WRITE", "엑셀 데이터 작성", current, totalRows)
                 Next
+
+                Dim lastColIndex As Integer = table.Columns.Count - 1
+                ExcelStyleHelper.ApplyHeaderStyle(sh, 0, lastColIndex)
 
                 If doAutoFit Then
                     AutoSizeAll(sh, table.Columns.Count)
@@ -192,20 +192,19 @@ Namespace Infrastructure
         End Sub
 
         ' 요약 테이블(그룹 밴딩 + 그룹 글꼴 강조)
-        Public Sub SaveStyledSimple(outPath As String, sheetName As String, table As DataTable, groupColumnName As String, Optional doAutoFit As Boolean = False, Optional progressChannel As String = Nothing)
+        Public Sub SaveStyledSimple(outPath As String,
+                                    sheetName As String,
+                                    table As DataTable,
+                                    groupColumnName As String,
+                                    Optional doAutoFit As Boolean = False,
+                                    Optional progressChannel As String = Nothing,
+                                    Optional statusResolver As ExcelStyleHelper.StatusResolver = Nothing)
             If table Is Nothing Then Throw New ArgumentNullException(NameOf(table))
             Dim totalRows As Integer = table.Rows.Count
             Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Reset(progressChannel)
             Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Report(progressChannel, "EXCEL_INIT", "엑셀 워크북 준비", 0, totalRows, Nothing, True)
             UI.Hub.UiBridgeExternalEvent.LogAutoFitDecision(doAutoFit, "ExcelCore.SaveStyledSimple")
             Dim wb As IWorkbook = New XSSFWorkbook()
-
-            Dim headFont = wb.CreateFont() : headFont.IsBold = True
-            Dim headStyle = wb.CreateCellStyle()
-            headStyle.SetFont(headFont)
-            headStyle.FillPattern = FillPattern.SolidForeground
-            headStyle.FillForegroundColor = IndexedColors.Grey25Percent.Index
-            SetThinBorders(headStyle)
 
             Dim bodyA = wb.CreateCellStyle() : SetThinBorders(bodyA)
             bodyA.FillPattern = FillPattern.SolidForeground
@@ -226,7 +225,6 @@ Namespace Infrastructure
             For ci = 0 To table.Columns.Count - 1
                 Dim c = r0.CreateCell(ci)
                 c.SetCellValue(table.Columns(ci).ColumnName)
-                c.CellStyle = headStyle
             Next
 
             If table.Columns.Count > 0 Then
@@ -272,6 +270,10 @@ Namespace Infrastructure
                 Next
                 Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Report(progressChannel, "EXCEL_WRITE", "엑셀 데이터 작성", ri + 1, totalRows)
             Next
+
+            Dim lastColIndex As Integer = table.Columns.Count - 1
+            ExcelStyleHelper.ApplyHeaderStyle(sh, 0, lastColIndex)
+            ExcelStyleHelper.ApplyRowStyleByStatus(sh, 1, sh.LastRowNum, lastColIndex, statusResolver)
 
             If doAutoFit Then
                 AutoSizeAll(sh, table.Columns.Count)

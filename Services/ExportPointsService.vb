@@ -126,7 +126,8 @@ Namespace Services
             })
 
             Dim dt As DataTable = BuildTable(headers, data)
-            ExcelCore.SaveXlsx(outPath, "Points", dt, doAutoFit)
+            Dim resolver As ExcelStyleHelper.StatusResolver = BuildExportStatusResolver(dt)
+            ExcelCore.SaveXlsx(outPath, "Points", dt, doAutoFit, Nothing, resolver)
 
             Return outPath
         End Function
@@ -161,6 +162,46 @@ Namespace Services
             End If
 
             Return dt
+        End Function
+
+        Private Shared Function BuildExportStatusResolver(dt As DataTable) As ExcelStyleHelper.StatusResolver
+            If dt Is Nothing Then Return Nothing
+            Dim fileCol As Integer = FindColumnIndex(dt, "File")
+            Dim angleCol As Integer = FindColumnIndex(dt, "TrueNorthAngle(deg)")
+            If fileCol < 0 OrElse angleCol < 0 Then Return Nothing
+
+            Return Function(row As NPOI.SS.UserModel.IRow, rowIndex As Integer) As ExcelStyleHelper.RowStatus
+                       Dim fileVal As String = ExcelStyleHelper.GetCellText(row, fileCol).Trim()
+                       If String.IsNullOrWhiteSpace(fileVal) Then
+                           Return ExcelStyleHelper.RowStatus.Error
+                       End If
+
+                       Dim angleText As String = ExcelStyleHelper.GetCellText(row, angleCol).Trim()
+                       If String.IsNullOrWhiteSpace(angleText) Then
+                           Return ExcelStyleHelper.RowStatus.Error
+                       End If
+
+                       Dim angleValue As Double
+                       If Double.TryParse(angleText, NumberStyles.Any, CultureInfo.InvariantCulture, angleValue) Then
+                           Return ExcelStyleHelper.RowStatus.Ok
+                       End If
+                       If Double.TryParse(angleText, NumberStyles.Any, CultureInfo.CurrentCulture, angleValue) Then
+                           Return ExcelStyleHelper.RowStatus.Ok
+                       End If
+
+                       Return ExcelStyleHelper.RowStatus.Error
+                   End Function
+        End Function
+
+        Private Shared Function FindColumnIndex(dt As DataTable, columnName As String) As Integer
+            If dt Is Nothing OrElse String.IsNullOrWhiteSpace(columnName) Then Return -1
+            For i = 0 To dt.Columns.Count - 1
+                Dim name = dt.Columns(i).ColumnName
+                If name IsNot Nothing AndAlso name.Equals(columnName, StringComparison.OrdinalIgnoreCase) Then
+                    Return i
+                End If
+            Next
+            Return -1
         End Function
 
         Private Shared Sub Extract(doc As Document, row As Row)

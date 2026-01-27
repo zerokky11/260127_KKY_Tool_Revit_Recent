@@ -10,14 +10,18 @@ Namespace Exports
         Public Property Family As String
         Public Property Type As String
         Public Property ConnectedIds As System.Collections.Generic.List(Of String)
+        Public Property Candidate As Boolean
+        Public Property Deleted As Boolean
     End Class
 
     Public Module DuplicateExport
 
         Public Function Save(rows As System.Collections.IEnumerable, Optional doAutoFit As Boolean = False, Optional progressChannel As String = Nothing) As String
             Dim mapped = MapRows(rows)
-            Dim dt = BuildSimpleTable(mapped)
-            Return ExcelCore.PickAndSaveXlsx("Duplicates (Simple)", dt, "Duplicates.xlsx", doAutoFit, progressChannel)
+            Dim rowStatuses As List(Of ExcelStyleHelper.RowStatus) = Nothing
+            Dim dt = BuildSimpleTable(mapped, rowStatuses)
+            Dim resolver As ExcelStyleHelper.StatusResolver = BuildRowStatusResolver(rowStatuses)
+            Return ExcelCore.PickAndSaveXlsx("Duplicates (Simple)", dt, "Duplicates.xlsx", doAutoFit, progressChannel, resolver)
         End Function
 
         Public Sub Save(outPath As String, rows As System.Collections.IEnumerable, Optional doAutoFit As Boolean = False, Optional progressChannel As String = Nothing)
@@ -26,8 +30,10 @@ Namespace Exports
 
         Public Sub Export(outPath As String, rows As System.Collections.IEnumerable, Optional doAutoFit As Boolean = False, Optional progressChannel As String = Nothing)
             Dim mapped = MapRows(rows)
-            Dim dt = BuildSimpleTable(mapped)
-            ExcelCore.SaveStyledSimple(outPath, "Duplicates (Simple)", dt, "Group", doAutoFit, progressChannel)
+            Dim rowStatuses As List(Of ExcelStyleHelper.RowStatus) = Nothing
+            Dim dt = BuildSimpleTable(mapped, rowStatuses)
+            Dim resolver As ExcelStyleHelper.StatusResolver = BuildRowStatusResolver(rowStatuses)
+            ExcelCore.SaveStyledSimple(outPath, "Duplicates (Simple)", dt, "Group", doAutoFit, progressChannel, resolver)
         End Sub
 
         Private Function MapRows(rows As System.Collections.IEnumerable) As System.Collections.Generic.List(Of DupRowDto)
@@ -40,12 +46,15 @@ Namespace Exports
                 it.Family = ReadProp(o, "Family", "family")
                 it.Type = ReadProp(o, "Type", "type")
                 it.ConnectedIds = ReadList(o, "ConnectedIds", "connectedIds", "Links", "links", "connected", "Connected", "ConnectedElements")
+                it.Candidate = ReadBoolProp(o, "Candidate", "candidate", "IsCandidate", "DeleteCandidate", "삭제 후보", "삭제후보")
+                it.Deleted = ReadBoolProp(o, "Deleted", "deleted", "IsDeleted", "삭제됨", "delete", "isDeleted")
                 list.Add(it)
             Next
             Return list
         End Function
 
-        Private Function BuildSimpleTable(rows As System.Collections.Generic.List(Of DupRowDto)) As DataTable
+        Private Function BuildSimpleTable(rows As System.Collections.Generic.List(Of DupRowDto),
+                                          ByRef rowStatuses As List(Of ExcelStyleHelper.RowStatus)) As DataTable
             Dim dt As New DataTable("simple")
             dt.Columns.Add("Group")
             dt.Columns.Add("ID")
@@ -54,6 +63,7 @@ Namespace Exports
             dt.Columns.Add("Type")
 
             Dim groupList = GroupByLogic(rows)
+            rowStatuses = New List(Of ExcelStyleHelper.RowStatus)()
             For i = 0 To groupList.Count - 1
                 Dim gName = $"Group{i + 1}"
                 For Each r In groupList(i)
@@ -67,6 +77,7 @@ Namespace Exports
                     dr("Family") = Nz(famOut)
                     dr("Type") = Nz(r.Type)
                     dt.Rows.Add(dr)
+                    rowStatuses.Add(ResolveDupStatus(r))
                 Next
             Next
             Return dt
@@ -131,6 +142,42 @@ Namespace Exports
                 End If
             Next
             Return ""
+        End Function
+
+        Private Function ReadBoolProp(obj As Object, ParamArray names() As String) As Boolean
+            If obj Is Nothing Then Return False
+            For Each nm In names
+                If String.IsNullOrEmpty(nm) Then Continue For
+                Dim p = obj.GetType().GetProperty(nm)
+                If p Is Nothing Then Continue For
+                Dim v = p.GetValue(obj, Nothing)
+                If v Is Nothing Then Continue For
+                If TypeOf v Is Boolean Then Return DirectCast(v, Boolean)
+                Dim s = v.ToString().Trim()
+                If String.IsNullOrEmpty(s) Then Continue For
+                If s.Equals("1") OrElse s.Equals("true", StringComparison.OrdinalIgnoreCase) OrElse s.Equals("y", StringComparison.OrdinalIgnoreCase) OrElse s.Equals("yes", StringComparison.OrdinalIgnoreCase) Then
+                    Return True
+                End If
+            Next
+            Return False
+        End Function
+
+        Private Function ResolveDupStatus(row As DupRowDto) As ExcelStyleHelper.RowStatus
+            If row Is Nothing Then Return ExcelStyleHelper.RowStatus.None
+            If row.Deleted Then Return ExcelStyleHelper.RowStatus.Deleted
+            If row.Candidate Then Return ExcelStyleHelper.RowStatus.Candidate
+            Return ExcelStyleHelper.RowStatus.Ok
+        End Function
+
+        Private Function BuildRowStatusResolver(statuses As List(Of ExcelStyleHelper.RowStatus)) As ExcelStyleHelper.StatusResolver
+            If statuses Is Nothing OrElse statuses.Count = 0 Then Return Nothing
+            Return Function(r As NPOI.SS.UserModel.IRow, rowIndex As Integer) As ExcelStyleHelper.RowStatus
+                       Dim listIndex As Integer = rowIndex - 1
+                       If listIndex < 0 OrElse listIndex >= statuses.Count Then
+                           Return ExcelStyleHelper.RowStatus.None
+                       End If
+                       Return statuses(listIndex)
+                   End Function
         End Function
 
         Private Function ReadList(obj As Object, ParamArray names() As String) As System.Collections.Generic.List(Of String)
