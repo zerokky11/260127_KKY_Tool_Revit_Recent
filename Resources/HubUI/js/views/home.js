@@ -17,7 +17,7 @@ export function renderHome(root) {
     const grid = div('home-choice-grid');
     grid.append(
         buildCard(
-            '활성 문서 검토',
+            '활성 문서 기능',
             '현재 열려있는 Revit 문서를 대상으로 빠르게 검토를 수행합니다.',
             'active-menu',
             [
@@ -30,20 +30,21 @@ export function renderHome(root) {
             '납품 기준에 맞춰 유틸리티 도구를 실행합니다.',
             'multi',
             [
-                '파라미터 값 연속성 검토: 연결된 객체들의 파라미터 값 연속성 검토',
-                '공유파라미터 GUID 검토: 프로젝트/패밀리 내 공유 파라미터 GUID 검토',
-                '패밀리 공유파라미터 연동 검토: 복합 패밀리 연동 상태 점검',
-                'Point 추출: Project/Survey 포인트 좌표 추출'
+                '파라미터 값 연속성 검토: 연결된 객체들의 파라미터 값 연속성 검토'
+                
             ],
             'bqc'
         ),
         buildCard(
             '유틸리티',
-            '납품시 BQC 검토 유틸리티 도구 모음',
+            '각종 검토 기능',
             'multi',
             [
                 'PMS 검토: Segment ↔ PMS 매핑 및 사이즈 검토',
                 'GUID/연동/Point 추출/Project Parameter 추가',
+                '공유파라미터 GUID 검토: 프로젝트/패밀리 내 공유 파라미터 GUID 검토',
+                '패밀리 공유파라미터 연동 검토: 복합 패밀리 연동 상태 점검',
+                'Point 추출: Project/Survey 포인트 좌표 추출'
             ],
             'utility',
             'utilities'
