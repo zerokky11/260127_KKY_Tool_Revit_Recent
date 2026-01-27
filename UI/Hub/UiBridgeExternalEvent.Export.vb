@@ -4,6 +4,7 @@ Imports System.Data
 Imports System.IO
 Imports System.Diagnostics
 Imports Autodesk.Revit.UI
+Imports KKY_Tool_Revit.Infrastructure
 Imports KKY_Tool_Revit.Services
 Imports NPOI.SS.UserModel
 Imports NPOI.XSSF.UserModel
@@ -437,14 +438,13 @@ Namespace UI.Hub
                     Dim sh = wb.CreateSheet("Export")
                 Dim xssf = TryCast(wb, XSSFWorkbook)
                 Dim baseStyle As ICellStyle = If(xssf IsNot Nothing, CreateBorderedStyle(xssf), Nothing)
-                Dim headerStyle As ICellStyle = If(xssf IsNot Nothing, CreateHeaderStyle(xssf, baseStyle), Nothing)
 
                 ' 헤더
                 Dim hr = sh.CreateRow(0)
                 For c = 0 To dt.Columns.Count - 1
                     Dim cell = hr.CreateCell(c)
                     cell.SetCellValue(dt.Columns(c).ColumnName)
-                    If headerStyle IsNot Nothing Then cell.CellStyle = headerStyle
+                    If baseStyle IsNot Nothing Then cell.CellStyle = baseStyle
                 Next
                 ' 데이터
                 Dim rIndex = 1
@@ -460,6 +460,9 @@ Namespace UI.Hub
                     ReportExportProgress("EXCEL_WRITE", "엑셀 데이터 작성", writtenRows, totalRows, If(totalRows > 0, CDbl(writtenRows) / CDbl(totalRows), 1.0), False)
                 Next
                 ReportExportProgress("EXCEL_WRITE", "엑셀 데이터 작성", totalRows, totalRows, 1.0, True)
+                Dim lastColIndex As Integer = dt.Columns.Count - 1
+                ExcelStyleHelper.ApplyHeaderStyle(sh, 0, lastColIndex)
+                ExcelStyleHelper.ApplyRowStyleByStatus(sh, 1, sh.LastRowNum, lastColIndex, BuildExportStatusResolver(dt))
                 ' 자동 너비
                 If doAutoFit Then
                     For c = 0 To dt.Columns.Count - 1
@@ -512,6 +515,46 @@ Namespace UI.Hub
                 ExportProgressLastRow = 0
             End SyncLock
         End Sub
+
+        Private Shared Function BuildExportStatusResolver(dt As DataTable) As ExcelStyleHelper.StatusResolver
+            If dt Is Nothing Then Return Nothing
+            Dim fileCol As Integer = FindColumnIndex(dt, "File")
+            Dim angleCol As Integer = FindColumnIndex(dt, "TrueNorthAngle(deg)")
+            If fileCol < 0 OrElse angleCol < 0 Then Return Nothing
+
+            Return Function(row As IRow, rowIndex As Integer) As ExcelStyleHelper.RowStatus
+                       Dim fileVal As String = ExcelStyleHelper.GetCellText(row, fileCol).Trim()
+                       If String.IsNullOrWhiteSpace(fileVal) Then
+                           Return ExcelStyleHelper.RowStatus.Error
+                       End If
+
+                       Dim angleText As String = ExcelStyleHelper.GetCellText(row, angleCol).Trim()
+                       If String.IsNullOrWhiteSpace(angleText) Then
+                           Return ExcelStyleHelper.RowStatus.Error
+                       End If
+
+                       Dim angleValue As Double
+                       If Double.TryParse(angleText, Globalization.NumberStyles.Any, Globalization.CultureInfo.InvariantCulture, angleValue) Then
+                           Return ExcelStyleHelper.RowStatus.Ok
+                       End If
+                       If Double.TryParse(angleText, Globalization.NumberStyles.Any, Globalization.CultureInfo.CurrentCulture, angleValue) Then
+                           Return ExcelStyleHelper.RowStatus.Ok
+                       End If
+
+                       Return ExcelStyleHelper.RowStatus.Error
+                   End Function
+        End Function
+
+        Private Shared Function FindColumnIndex(dt As DataTable, columnName As String) As Integer
+            If dt Is Nothing OrElse String.IsNullOrWhiteSpace(columnName) Then Return -1
+            For i = 0 To dt.Columns.Count - 1
+                Dim name = dt.Columns(i).ColumnName
+                If name IsNot Nothing AndAlso name.Equals(columnName, StringComparison.OrdinalIgnoreCase) Then
+                    Return i
+                End If
+            Next
+            Return -1
+        End Function
 
         Private Shared Sub ReportExportProgress(phase As String,
                                                 message As String,
