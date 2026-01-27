@@ -5,10 +5,19 @@ Namespace Exports
 
     Public Module ConnectorExport
 
+        Public Function SaveWithDialog(resultTable As DataTable) As String
+            If resultTable Is Nothing Then Return String.Empty
             Dim resolver = BuildStatusResolver(resultTable)
             Return ExcelCore.PickAndSaveXlsx("Connector Diagnostics", resultTable, "ConnectorDiagnostics.xlsx", False, Nothing, resolver)
+        End Function
+
+        ' 경로 고정 저장 버전(브리지에서 경로를 이미 받은 경우)
+        Public Sub Save(outPath As String, resultTable As DataTable)
+            If resultTable Is Nothing Then Exit Sub
             Dim resolver = BuildStatusResolver(resultTable)
             ExcelCore.SaveXlsx(outPath, "Connector Diagnostics", resultTable, False, Nothing, resolver)
+        End Sub
+
         Private Function BuildStatusResolver(resultTable As DataTable) As ExcelStyleHelper.StatusResolver
             If resultTable Is Nothing Then Return Nothing
             Dim statusIndex As Integer = FindColumnIndex(resultTable, "Status")
@@ -59,16 +68,6 @@ Namespace Exports
             Next
             Return -1
         End Function
-
-            If resultTable Is Nothing Then Return String.Empty
-            Return ExcelCore.PickAndSaveXlsx("Connector Diagnostics", resultTable, "ConnectorDiagnostics.xlsx")
-        End Function
-
-        ' 경로 고정 저장 버전(브리지에서 경로를 이미 받은 경우)
-        Public Sub Save(outPath As String, resultTable As DataTable)
-            If resultTable Is Nothing Then Exit Sub
-            ExcelCore.SaveXlsx(outPath, "Connector Diagnostics", resultTable)
-        End Sub
 
     End Module
 End Namespace
