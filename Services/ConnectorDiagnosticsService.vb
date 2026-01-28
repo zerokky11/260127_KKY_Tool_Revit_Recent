@@ -1,5 +1,6 @@
 Imports System
 Imports System.Collections.Generic
+Imports System.Globalization
 Imports System.IO
 Imports System.Linq
 Imports Autodesk.Revit.DB
@@ -16,6 +17,8 @@ Namespace Services
             Public Property Exists As Boolean
             Public Property HasValue As Boolean
             Public Property Text As String
+            ' 비교용 키(표시문자열 반올림/정밀도 영향 최소화)
+            Public Property CompareKey As String
         End Class
 
         ' === 디버그 로그 (호출자가 읽음) ===
@@ -224,20 +227,36 @@ Namespace Services
                             Dim distFt As Double = 0
                             Dim connType As String = ""
 
-                            ' 1) 실제 연결 (Physical)
+                            ' 1) 실제 연결 (Physical): AllRefs 중 "가장 가까운" Owner 선택
                             If c.IsConnected Then
+                                Dim bestOwner As Element = Nothing
+                                Dim bestDist As Double = Double.MaxValue
+
                                 For Each r As Connector In c.AllRefs.Cast(Of Connector)()
-                                    If r?.Owner Is Nothing Then Continue For
+                                    If r Is Nothing OrElse r.Owner Is Nothing Then Continue For
                                     If r.Owner.Id.IntegerValue = baseId Then Continue For
                                     If TypeOf r.Owner Is MEPSystem Then Continue For
 
-                                    ' ✅ 활성문서 검토 로직과 동일하게: 수집 대상 밖은 제외
-                                    If Not allowedIds.Contains(r.Owner.Id.IntegerValue) Then Continue For
+                                    ' 기존 코드의 allowedIds 필터는 제거(실제 연결인데도 제외되는 케이스 방지)
+                                    Dim d As Double = Double.MaxValue
+                                    Try
+                                        If r.Origin IsNot Nothing AndAlso c.Origin IsNot Nothing Then
+                                            d = c.Origin.DistanceTo(r.Origin)
+                                        End If
+                                    Catch
+                                    End Try
 
-                                    found = r.Owner
-                                    connType = "Physical(커넥터 연결 됨)"
-                                    Exit For
+                                    If d < bestDist Then
+                                        bestDist = d
+                                        bestOwner = r.Owner
+                                    End If
                                 Next
+
+                                If bestOwner IsNot Nothing Then
+                                    found = bestOwner
+                                    distFt = If(bestDist = Double.MaxValue, 0.0, bestDist)
+                                    connType = "Physical(커넥터 연결 됨)"
+                                End If
                             End If
 
                             ' 2) 근접 후보(Proximity) - type match 우선, 실패 시 type 무시
@@ -260,7 +279,7 @@ Namespace Services
                             Dim info1 = GetParamInfo(el, param)
                             Dim info2 As ParamInfo = If(found IsNot Nothing,
                                                         GetParamInfo(found, param),
-                                                        New ParamInfo() With {.Exists = False, .HasValue = False, .Text = ""})
+                                                        New ParamInfo() With {.Exists = False, .HasValue = False, .Text = "", .CompareKey = ""})
 
                             Dim paramCompare As String = "N/A"
                             Dim issueStatus As String = Nothing
@@ -273,7 +292,7 @@ Namespace Services
                                 Else
                                     If Not info1.HasValue AndAlso Not info2.HasValue Then
                                         paramCompare = "BothEmpty"
-                                    ElseIf String.Equals(info1.Text, info2.Text, StringComparison.OrdinalIgnoreCase) Then
+                                    ElseIf String.Equals(If(info1.CompareKey, ""), If(info2.CompareKey, ""), StringComparison.Ordinal) Then
                                         paramCompare = "Match"
                                     Else
                                         paramCompare = "Mismatch"
@@ -306,27 +325,44 @@ Namespace Services
                                 (includeOkRows AndAlso String.Equals(issueStatus, "OK", StringComparison.OrdinalIgnoreCase))
 
                             If shouldAdd Then
-                                Dim pairKey As String
                                 Dim originKey As String = ""
                                 Try
                                     originKey = $"{Math.Round(c.Origin.X, 4)},{Math.Round(c.Origin.Y, 4)},{Math.Round(c.Origin.Z, 4)}"
                                 Catch
                                 End Try
 
+                                ' ---- Id1/Id2 순서 고정(min/max) + 출력 필드도 같이 swap ----
+                                Dim outE1 As Element = el
+                                Dim outE2 As Element = found
+                                Dim outV1 As String = v1
+                                Dim outV2 As String = v2
+                                Dim outExtras1 = extras1
+                                Dim outExtras2 = extras2
+
+                                Dim pairKey As String
                                 If found IsNot Nothing Then
-                                    Dim id1 = baseId
-                                    Dim id2 = found.Id.IntegerValue
-                                    Dim minId = Math.Min(id1, id2)
-                                    Dim maxId = Math.Max(id1, id2)
+                                    Dim rawId1 = baseId
+                                    Dim rawId2 = found.Id.IntegerValue
+
+                                    Dim minId = Math.Min(rawId1, rawId2)
+                                    Dim maxId = Math.Max(rawId1, rawId2)
+
+                                    ' 출력도 minId가 Id1이 되도록 swap
+                                    If rawId2 < rawId1 Then
+                                        Dim tmpE = outE1 : outE1 = outE2 : outE2 = tmpE
+                                        Dim tmpV = outV1 : outV1 = outV2 : outV2 = tmpV
+                                        Dim tmpX = outExtras1 : outExtras1 = outExtras2 : outExtras2 = tmpX
+                                    End If
+
                                     pairKey = $"{minId}-{maxId}-{connType}-{originKey}"
                                 Else
                                     pairKey = $"{baseId}-none-{connType}-{originKey}"
                                 End If
 
                                 If seenPairs.Add(pairKey) Then
-                                    Dim row = BuildRow(el, found, distInch, connType, param, v1, v2,
+                                    Dim row = BuildRow(outE1, outE2, distInch, connType, param, outV1, outV2,
                                                        issueStatus, paramCompare,
-                                                       normalizedExtras, extras1, extras2, fileLabel)
+                                                       normalizedExtras, outExtras1, outExtras2, fileLabel)
                                     rows.Add(row)
                                 End If
                             End If
@@ -465,7 +501,7 @@ Namespace Services
             Dim row As New Dictionary(Of String, Object)(StringComparer.Ordinal) From {
                 {"File", fileLabel},
                 {"Id1", If(e1 IsNot Nothing, e1.Id.IntegerValue.ToString(), "0")},
-                {"Id2", If(e2 IsNot Nothing, e2.Id.IntegerValue.ToString(), "")},
+                {"Id2", If(e2 IsNot Nothing, "," & e2.Id.IntegerValue.ToString(), "")},' Id2 앞에 콤마 추가(복사용). Id1에는 절대 콤마 없음.
                 {"Category1", cat1},
                 {"Category2", cat2},
                 {"Family1", fam1},
@@ -598,7 +634,7 @@ Namespace Services
         ' ============================
 
         Private Shared Function GetParamInfo(el As Element, name As String) As ParamInfo
-            Dim info As New ParamInfo() With {.Exists = False, .HasValue = False, .Text = ""}
+            Dim info As New ParamInfo() With {.Exists = False, .HasValue = False, .Text = "", .CompareKey = ""}
 
             If el Is Nothing OrElse String.IsNullOrWhiteSpace(name) Then
                 Return info
@@ -615,9 +651,64 @@ Namespace Services
             End If
 
             info.Exists = True
-            info.HasValue = p.HasValue
+
+            Dim hasVal As Boolean = False
+            Try
+                hasVal = p.HasValue
+            Catch
+            End Try
+
             info.Text = ResolveParamText(p)
+
+            ' CompareKey: 숫자/정수는 raw 값을 사용(표시문자열 반올림 이슈 방지)
+            info.CompareKey = ResolveCompareKey(p)
+
+            ' HasValue는 CompareKey 기준으로 판단(빈 문자열이어도 p.HasValue가 True인 케이스 보정)
+            info.HasValue = hasVal AndAlso (info.CompareKey IsNot Nothing) AndAlso (info.CompareKey <> "")
+
             Return info
+        End Function
+
+        Private Shared Function ResolveCompareKey(p As Parameter) As String
+            If p Is Nothing Then Return ""
+            Dim hasVal As Boolean = False
+            Try
+                hasVal = p.HasValue
+            Catch
+            End Try
+            If Not hasVal Then Return ""
+
+            Try
+                Select Case p.StorageType
+                    Case StorageType.[String]
+                        Dim s = p.AsString()
+                        If s Is Nothing Then s = ""
+                        Return s.Trim()
+
+                    Case StorageType.Double
+                        ' raw double (feet) 그대로 비교
+                        Dim d = p.AsDouble()
+                        Return d.ToString("R", CultureInfo.InvariantCulture)
+
+                    Case StorageType.Integer
+                        Dim i = p.AsInteger()
+                        Return i.ToString(CultureInfo.InvariantCulture)
+
+                    Case StorageType.ElementId
+                        Dim id = p.AsElementId()
+                        If id Is Nothing Then Return ""
+                        Return id.IntegerValue.ToString(CultureInfo.InvariantCulture)
+
+                    Case Else
+                        ' 기타는 표시값 기준
+                        Dim s = p.AsValueString()
+                        If String.IsNullOrWhiteSpace(s) Then s = p.AsString()
+                        If s Is Nothing Then s = ""
+                        Return s.Trim()
+                End Select
+            Catch
+                Return ""
+            End Try
         End Function
 
         Private Shared Function ResolveParamText(el As Element, name As String) As String
@@ -634,7 +725,14 @@ Namespace Services
         End Function
 
         Private Shared Function ResolveParamText(p As Parameter) As String
-            If p Is Nothing OrElse Not p.HasValue Then Return ""
+            If p Is Nothing Then Return ""
+            Dim hasVal As Boolean = False
+            Try
+                hasVal = p.HasValue
+            Catch
+            End Try
+            If Not hasVal Then Return ""
+
             Dim raw As String = Nothing
             Try
                 If p.StorageType = StorageType.[String] Then
@@ -812,7 +910,7 @@ Namespace Services
                     If s = "" Then Return Double.MaxValue ' ✅ 빈 값(에러 등)은 맨 아래로
                 End If
 
-                Return Convert.ToDouble(o)
+                Return Convert.ToDouble(o, CultureInfo.InvariantCulture)
             Catch
                 Return Double.MaxValue
             End Try
@@ -822,8 +920,9 @@ Namespace Services
             Try
                 If o Is Nothing Then Return 0
                 Dim s = o.ToString().Trim()
+                If s.StartsWith(",") Then s = s.Substring(1) ' Id2 앞 콤마 제거
                 If String.IsNullOrEmpty(s) Then Return 0
-                Return Convert.ToInt32(s)
+                Return Convert.ToInt32(s, CultureInfo.InvariantCulture)
             Catch
                 Return 0
             End Try
@@ -1063,7 +1162,7 @@ Namespace Services
                         Continue While
                     End If
 
-                    ' ✅ ident 스캔에서 ; 도 끊어야 함 (여기 핵심)
+                    ' ✅ ident 스캔에서 ; 도 끊어야 함
                     Dim startWord = i
                     While i < raw.Length AndAlso Not Char.IsWhiteSpace(raw(i)) _
                           AndAlso raw(i) <> "("c AndAlso raw(i) <> ")"c _
