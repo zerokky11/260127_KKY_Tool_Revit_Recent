@@ -120,6 +120,7 @@
 		<Compile Include="Infrastructure\ElementIdCompat.vb" />
 		<Compile Include="Infrastructure\ResourceExtractor.vb" />
 		<Compile Include="Infrastructure\ExcelCore.vb" />
+		<Compile Include="Infrastructure\ExcelStyleHelper.vb" />
 		<Compile Include="Services\DuplicateAnalysisService.vb" />
 		<Compile Include="Services\ConnectorDiagnosticsService.vb" />
 		<Compile Include="Services\ExportPointsService.vb" />
