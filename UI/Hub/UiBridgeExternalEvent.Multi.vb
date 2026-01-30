@@ -422,7 +422,7 @@ NextItem:
             If String.IsNullOrWhiteSpace(exportKey) Then Exit Sub
             If String.IsNullOrWhiteSpace(savedPath) Then Exit Sub
             Try
-                Global.KKY_Tool_Revit.Infrastructure.ExcelExportStyleRegistry.ApplyStylesForKey(exportKey, savedPath)
+                KKY_Tool_Revit.Infrastructure.ExcelExportStyleRegistry.ApplyStylesForKey(exportKey, savedPath)
             Catch
                 ' 스타일 실패해도 저장 성공은 유지
             End Try

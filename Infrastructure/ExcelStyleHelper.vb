@@ -22,7 +22,7 @@ Namespace KKY_Tool_Revit.Infrastructure
         Private ReadOnly _wbStyles As New ConditionalWeakTable(Of IWorkbook, StyleSet)()
 
         Private Function GetStyleSet(wb As IWorkbook) As StyleSet
-            Return _wbStyles.GetValue(wb, Function(_) CreateStyleSet(wb))
+            Return _wbStyles.GetValue(wb, Function(key) CreateStyleSet(wb))
         End Function
 
         Private Function CreateStyleSet(wb As IWorkbook) As StyleSet

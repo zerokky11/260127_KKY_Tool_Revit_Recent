@@ -167,11 +167,7 @@ Namespace KKY_Tool_Revit.Infrastructure
             Next
 
             If autoFit Then
-                Try
-                    sheet.TrackAllColumnsForAutoSizing()
-                Catch
-                    ' ignore
-                End Try
+                TryTrackAllColumnsForAutoSizing(sheet)
                 For c As Integer = 0 To colCount - 1
                     Try
                         sheet.AutoSizeColumn(c)
@@ -225,6 +221,17 @@ Namespace KKY_Tool_Revit.Infrastructure
                 Return dlg.FileName
             End Using
         End Function
+
+        Private Sub TryTrackAllColumnsForAutoSizing(sheet As ISheet)
+            If sheet Is Nothing Then Return
+            Try
+                Dim mi = sheet.GetType().GetMethod("TrackAllColumnsForAutoSizing", Type.EmptyTypes)
+                If mi Is Nothing Then Return
+                mi.Invoke(sheet, Nothing)
+            Catch
+                ' ignore
+            End Try
+        End Sub
 
         Private Sub EnsureDir(filePath As String)
             Dim dir = Path.GetDirectoryName(filePath)

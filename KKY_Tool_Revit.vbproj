@@ -46,6 +46,9 @@
 	<PropertyGroup>
 		<ProgramFilesPath>$([System.Environment]::GetEnvironmentVariable('ProgramFiles'))</ProgramFilesPath>
 
+		<!-- 사용자 지정: /p:RevitApiDir=... 또는 환경변수 REVIT_API_DIR -->
+		<RevitApiDirFromEnvCommon>$([System.Environment]::GetEnvironmentVariable('REVIT_API_DIR'))</RevitApiDirFromEnvCommon>
+
 		<!-- 환경변수: REVIT_API_DIR_2019 / REVIT_API_DIR_2021 / REVIT_API_DIR_2023 등을 상황에 맞게 -->
 		<RevitApiDirFromEnv>$([System.Environment]::GetEnvironmentVariable('REVIT_API_DIR_$(AddinYear)'))</RevitApiDirFromEnv>
 
@@ -57,14 +60,15 @@
 	</PropertyGroup>
 
 	<PropertyGroup>
-		<RevitApiDir Condition="'$(RevitApiDirFromEnv)' != '' and Exists('$(RevitApiDirFromEnv)\RevitAPI.dll') and Exists('$(RevitApiDirFromEnv)\RevitAPIUI.dll')">$(RevitApiDirFromEnv)</RevitApiDir>
+		<RevitApiDir Condition="'$(RevitApiDir)' == '' and '$(RevitApiDirFromEnvCommon)' != '' and Exists('$(RevitApiDirFromEnvCommon)\RevitAPI.dll') and Exists('$(RevitApiDirFromEnvCommon)\RevitAPIUI.dll')">$(RevitApiDirFromEnvCommon)</RevitApiDir>
+		<RevitApiDir Condition="'$(RevitApiDir)' == '' and '$(RevitApiDirFromEnv)' != '' and Exists('$(RevitApiDirFromEnv)\RevitAPI.dll') and Exists('$(RevitApiDirFromEnv)\RevitAPIUI.dll')">$(RevitApiDirFromEnv)</RevitApiDir>
 		<RevitApiDir Condition="'$(RevitApiDir)' == '' and Exists('$(RevitApiDirCandidate0)\RevitAPI.dll') and Exists('$(RevitApiDirCandidate0)\RevitAPIUI.dll')">$(RevitApiDirCandidate0)</RevitApiDir>
 		<RevitApiDir Condition="'$(RevitApiDir)' == '' and Exists('$(RevitApiInstallCandidate0)\RevitAPI.dll') and Exists('$(RevitApiInstallCandidate0)\RevitAPIUI.dll')">$(RevitApiInstallCandidate0)</RevitApiDir>
 	</PropertyGroup>
 
 	<Target Name="CheckRevitApiDir" BeforeTargets="ResolveReferences">
 		<Error Condition="'$(RevitApiDir)' == ''"
-			   Text="Local Revit API folder not found. Set env REVIT_API_DIR_$(AddinYear) or put RevitAPI.dll/RevitAPIUI.dll under ..\Compile\$(AddinYear)addin or ensure Revit $(AddinYear) is installed in Program Files." />
+			   Text="Local Revit API folder not found. Set /p:RevitApiDir=... or env REVIT_API_DIR(_$(AddinYear)) or put RevitAPI.dll/RevitAPIUI.dll under ..\Compile\$(AddinYear)addin or ensure Revit $(AddinYear) is installed in Program Files." />
 	</Target>
 
 	<!-- Revit API References -->

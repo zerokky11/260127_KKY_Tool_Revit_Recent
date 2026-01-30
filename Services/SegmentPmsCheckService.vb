@@ -384,7 +384,7 @@ Namespace Services
                 Dim autoFitMessage As String = If(doAutoFit, "AutoFit 적용", "빠른 모드: AutoFit 생략")
                 If doAutoFit Then
                     Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Report(progressChannel, "AUTOFIT", autoFitMessage, written, totalRows, Nothing, True)
-                    Global.KKY_Tool_Revit.Infrastructure.ExcelCore.TryAutoFitWithExcel(path)
+                    KKY_Tool_Revit.Infrastructure.ExcelCore.TryAutoFitWithExcel(path)
                 Else
                     Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Report(progressChannel, "AUTOFIT", autoFitMessage, written, totalRows, Nothing, True)
                 End If

@@ -8,7 +8,7 @@ Namespace Exports
         Public Function SaveWithDialog(resultTable As DataTable) As String
             If resultTable Is Nothing Then Return String.Empty
 
-            Dim outPath As String = Global.KKY_Tool_Revit.Infrastructure.ExcelCore.PickAndSaveXlsx(
+            Dim outPath As String = KKY_Tool_Revit.Infrastructure.ExcelCore.PickAndSaveXlsx(
                 "Connector Diagnostics",
                 resultTable,
                 "ConnectorDiagnostics.xlsx"
@@ -17,7 +17,7 @@ Namespace Exports
             If String.IsNullOrWhiteSpace(outPath) Then Return outPath
 
             Try
-                Global.KKY_Tool_Revit.Infrastructure.ExcelExportStyleRegistry.ApplyStylesForKey("connector", outPath)
+                KKY_Tool_Revit.Infrastructure.ExcelExportStyleRegistry.ApplyStylesForKey("connector", outPath)
             Catch
             End Try
 
@@ -28,10 +28,10 @@ Namespace Exports
             If String.IsNullOrWhiteSpace(outPath) Then Exit Sub
             If resultTable Is Nothing Then Exit Sub
 
-            Global.KKY_Tool_Revit.Infrastructure.ExcelCore.SaveXlsx(outPath, "Connector Diagnostics", resultTable)
+            KKY_Tool_Revit.Infrastructure.ExcelCore.SaveXlsx(outPath, "Connector Diagnostics", resultTable)
 
             Try
-                Global.KKY_Tool_Revit.Infrastructure.ExcelExportStyleRegistry.ApplyStylesForKey("connector", outPath)
+                KKY_Tool_Revit.Infrastructure.ExcelExportStyleRegistry.ApplyStylesForKey("connector", outPath)
             Catch
             End Try
         End Sub
