@@ -1,0 +1,95 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net47</TargetFramework>
+		<OutputType>Library</OutputType>
+
+		<RootNamespace>NwcBatchExport2019</RootNamespace>
+		<AssemblyName>NwcBatchExport2019</AssemblyName>
+
+		<PlatformTarget>x64</PlatformTarget>
+		<Prefer32Bit>false</Prefer32Bit>
+
+		<OptionStrict>On</OptionStrict>
+		<OptionExplicit>On</OptionExplicit>
+
+		<UseWindowsForms>true</UseWindowsForms>
+
+		<EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<RevitYear>2019</RevitYear>
+
+		<RevitRegKey64>HKEY_LOCAL_MACHINE\SOFTWARE\Autodesk\Revit\Autodesk Revit $(RevitYear)</RevitRegKey64>
+		<RevitRegKey32>HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Autodesk\Revit\Autodesk Revit $(RevitYear)</RevitRegKey32>
+
+		<RevitInstallDir Condition="'$(RevitInstallDir)'==''">$([MSBuild]::GetRegistryValue('$(RevitRegKey64)','InstallationLocation',''))</RevitInstallDir>
+		<RevitInstallDir Condition="'$(RevitInstallDir)'==''">$([MSBuild]::GetRegistryValue('$(RevitRegKey32)','InstallationLocation',''))</RevitInstallDir>
+		<RevitInstallDir Condition="'$(RevitInstallDir)'==''">C:\Program Files\Autodesk\Revit $(RevitYear)</RevitInstallDir>
+
+		<AddinFolder>$(APPDATA)\Autodesk\Revit\Addins\$(RevitYear)</AddinFolder>
+		<AddinAssemblyDest>$(AddinFolder)\$(AssemblyName).dll</AddinAssemblyDest>
+		<AddinManifestPath>$(AddinFolder)\$(AssemblyName).addin</AddinManifestPath>
+
+		<AddinGuid>{E5C7F3D2-0E4E-4B4F-9C11-0C1F8E1FA2D1}</AddinGuid>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Compile Include="BatchNwcExport.vb" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Reference Include="RevitAPI">
+			<HintPath>$(RevitInstallDir)\RevitAPI.dll</HintPath>
+			<Private>false</Private>
+		</Reference>
+		<Reference Include="RevitAPIUI">
+			<HintPath>$(RevitInstallDir)\RevitAPIUI.dll</HintPath>
+			<Private>false</Private>
+		</Reference>
+
+		<Reference Include="System.Windows.Forms" />
+		<Reference Include="System.Drawing" />
+
+		<Reference Include="UIAutomationClient" />
+		<Reference Include="UIAutomationTypes" />
+		<Reference Include="WindowsBase" />
+		<Reference Include="PresentationCore" />
+		<Reference Include="PresentationFramework" />
+	</ItemGroup>
+
+	<Target Name="DeployRevitAddin" AfterTargets="Build">
+		<MakeDir Directories="$(AddinFolder)" />
+
+		<Copy SourceFiles="$(TargetPath)"
+			  DestinationFiles="$(AddinAssemblyDest)"
+			  SkipUnchangedFiles="true" />
+
+		<Copy SourceFiles="$(TargetDir)$(AssemblyName).pdb"
+			  DestinationFolder="$(AddinFolder)"
+			  Condition="Exists('$(TargetDir)$(AssemblyName).pdb')"
+			  SkipUnchangedFiles="true" />
+
+		<ItemGroup>
+			<_AddinLines Include="&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;" />
+			<_AddinLines Include="&lt;RevitAddIns&gt;" />
+			<_AddinLines Include="  &lt;AddIn Type=&quot;Command&quot;&gt;" />
+			<_AddinLines Include="    &lt;Name&gt;NWC Batch Export 2019&lt;/Name&gt;" />
+			<_AddinLines Include="    &lt;Assembly&gt;$(AddinAssemblyDest)&lt;/Assembly&gt;" />
+			<_AddinLines Include="    &lt;AddInId&gt;$(AddinGuid)&lt;/AddInId&gt;" />
+			<_AddinLines Include="    &lt;FullClassName&gt;NwcBatchExport2019.BatchNwcExportCommand&lt;/FullClassName&gt;" />
+			<_AddinLines Include="    &lt;VendorId&gt;OAI&lt;/VendorId&gt;" />
+			<_AddinLines Include="    &lt;VendorDescription&gt;Revit 2019 NWC batch export (PostCommand + UIAutomation dialogs)&lt;/VendorDescription&gt;" />
+			<_AddinLines Include="  &lt;/AddIn&gt;" />
+			<_AddinLines Include="&lt;/RevitAddIns&gt;" />
+		</ItemGroup>
+
+		<WriteLinesToFile File="$(AddinManifestPath)"
+						  Lines="@(_AddinLines)"
+						  Overwrite="true"
+						  Encoding="utf-8" />
+	</Target>
+
+</Project>
